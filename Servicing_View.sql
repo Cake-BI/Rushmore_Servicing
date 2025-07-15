@@ -1,12 +1,14 @@
 USE [kratos]
 GO
 
-/****** Object:  View [dbo].[vwRushmore]    Script Date: 7/14/2025 8:26:25 AM ******/
+/****** Object:  View [dbo].[vwRushmore]    Script Date: 7/15/2025 8:31:19 AM ******/
 SET ANSI_NULLS ON
 GO
 
 SET QUOTED_IDENTIFIER ON
 GO
+
+
 
 
 
@@ -19,8 +21,8 @@ as
 SELECT
  
 L.LoanNumber,
-[Mr.CooperLoan] = Null,  --TODO
-[InvestorLoan] = Null,   --TODO
+[Mr.CooperLoan] = Null,  
+[InvestorLoan] = Null,   
 CASE WHEN  CD.BorrowerUnparsedName1 IS NOT NULL AND CD.BorrowerUnparsedName1 <> ''     
      THEN CD.BorrowerUnparsedName1
        ELSE B1.LastName 
@@ -103,16 +105,23 @@ R.URLA2020StreetAddress AS BorrowerMailingAddress,
 R.AddressCity AS BorrowerMailingCity,
 R.AddressState AS BorrowerMailingState,
 R.AddressPostalCode AS BorrowerMailingZip,
-L.MortgageType AS LoanType,
+LoanType = CASE WHEN L.MortgageType = 'FHA' THEN '01'
+                WHEN L.MortgageType = 'VA' THEN '04'
+                WHEN CF6.StringValue = 'X' THEN '32' -- Texas A6
+                WHEN LPD.LienPriorityType = 'SecondLien' THEN '16' --HELOC Closed
+                WHEN CF7.StringValue = 'Y' THEN 39
+                WHEN LPD.MiCoveragePercent Is Not Null THEN '05' -- Conventional Insured 
+                ELSE '03' --Conventional Uninsured
+               END,
 L.OtherMortgageTypeDescription AS LoanTypeOtherDescription ,
 LPD.LienPriorityType AS LienPosition,
-EscrowMonthlyPaymentAmount				  = Null,  --TODO
-CurrentMonthlyPrincipalandInterestPayment = Null,  --TODO
+Hud1Es.EscrowPayment AS EscrowMonthlyPaymentAmount,  
+L.ProposedFirstMortgageAmount AS CurrentMonthlyPrincipalandInterestPayment,  
 L.BaseLoanAmount AS CurrentUnpaidPrinicpalBalance,
 L.PropertyAppraisedValueAmount AS CurrentAppraisedValue,
 L.PropertyAppraisedValueAmount AS OriginalAppraisedValue,
 L.PurchasePriceAmount AS SubjectPropertyPurchasePrice,
-MonthlyTaxes         = Null,    --TODO
+L.ProposedRealEstateTaxesAmount AS MonthlyTaxes,   
 CC.Section1000BorrowerPaidTotalAmount AS CurrentEscrowBalance,
 CASE WHEN Fee1.BorPaidAMount > 0 THEN 'Y' 
     ELSE 'N'
@@ -124,14 +133,13 @@ L.ProposedHazardInsuranceAmount AS HazardMonthlyPremium,
 Fee1.MonthlyPayment AS FloodInsuranceMonthlyPremium, 
 ISNULL(L.ProposedHazardInsuranceAmount, 0) + ISNULL(Fee1.MonthlyPayment, 0) AS [TotalHazard/FloodMonthlyPremium],
 RL.CorrespondentFinalCDCityPropertyTax AS CityMonthlyTaxAmount,	
-AdditionalImpound = Null,		      --TODO
+AdditionalImpound = Null,		      
 L.BaseLoanAmount AS NoteBalance,
-LienCurrentAmtOwning = Null,		  --TODO 
+L.ExistingLiensAndDrawUsed AS LienCurrentAmtOwing1,	
 CDIS.PPC1MaximumMonthlyPayment AS TotalMonthlyPayment,	      
 FhaVaLoan.ClosingDate AS NoteDate,    -- changed from CD.DocumentPreparationDate 
 LPD.ScheduledFirstPaymentDate AS FirstPymtDate,
 L.MaturityDate AS LoanMaturityDate,
---Initial Suspense Date Excel Field
 US.AppraisalCompletedDate,
 L.RequestedInterestRatePercent AS AnnualInterestRate,
 PaymentPeriod = 'Monthly',
@@ -145,7 +153,11 @@ PR.County AS SubjectPropertyCounty,
 ThePercentageOfOwnershipInterestIs = 100,
 OriginalOccStatus = A.PropertyUsageType,
 Hmda.LoanPurpose AS LoanPurposeSummary,
-LPD.GsePropertyType AS SubjectPropertyType,
+SubjectPropertyType = CASE WHEN LPD.GsePropertyType Like '%Condo%' THEN '04'
+                           WHEN LPD.GsePropertyType = 'PUD' THEN '22'
+                           WHEN LPD.GsePropertyType Like 'Manufacture%' THEN '14'
+                      ELSE '01'
+                      END, 
 ATRQMC.IsHigherPricedLoan AS [HPMLFlagDoesTheLoanExceedThreshold?],
 HpmlEscrowWaiverReason = NULL,
 HpmlEscrowWaiverExpDate = NULL,
@@ -170,42 +182,45 @@ L.MersNumberRegistrationDate AS MERSRegistrationDate,
         'Y'
         ELSE 'N'
         END,
-CON.InsuranceDeterminationDate AS FloodInfoDeterminationDate,
-CON.InsuranceDeterminationNumber AS FloodInfoDeterminationNumber,
+CON2.InsuranceDeterminationDate AS FloodInfoDeterminationDate,
+CON2.InsuranceDeterminationNumber AS FloodInfoDeterminationNumber,
 CD.SpecialFloodHazardAreaIndictor AS PropertyInfoFloodZone,
 TQL.FloodProgramCode,
 TQL.LomaOrLomrDate,
 TQL.LomaOrLomrCaseNumber,
---Certification Type,
-CON.InsuranceCertNumber AS CertificateNumber,
+DN.NFIPParticipationStatus AS CertificationType,
+CON2.InsuranceCertNumber AS CertificateNumber,
 DN.NFIPCommunityNumber AS CommunityNumber,
 SUBSTRING(DN.MapPanelNumber, 7, 4) AS PanelNumber,
 SUBSTRING(DN.MapPanelNumber, 11, 1) AS SuffixNumber,
 CD.SpecialFloodHazardAreaIndictor AS ZoneIndicator,
-DN.NFIPMapEffectiveRevisedDate,
---Mapping Company,
---Community Participation Date,
+DN.NFIPMapEffectiveRevisedDate AS MapDate,
+MappingCompany = 'SnapFlood',
+DN.NFIPMapEffectiveRevisedDate AS CommunityParticipationDate,
 RZ.MaximumLateCharge,
 RZ.LateChargePercent AS [LateCharge%], 
 RZ.LateChargeType AS LateChargeCode,
 RZ.MinimumLateCharge,
 RZ.LateChargeDays AS [GracePeriod#ofDays(Late Charge Days)],
---MIP Policy Expiration Date,
---MIP 1st Due Date,
+MIPPolicyExpirationDate = Null,  --TO DOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOO
+MIP1stDueDate = CASE WHEN LPD.MiCoveragePercent Is Not Null THEN
+                    LPD.ScheduledFirstPaymentDate
+                    ELSE Null
+                    END,
 RZ.PmiIndicator,
 CASE WHEN L.MortgageType = 'FHA' THEN 
 L.ProposedMortgageInsuranceAmount * 12
         ELSE NULL
         END AS [MIP/PMIAnnualPremium],
 L.ProposedMortgageInsuranceAmount AS [MIP PremiumAmount],
-IntS.NextPaymentEscrowMortgageInsurance AS [MIP/PMIMonthlyPremiumAmt], 
+L.ProposedMortgageInsuranceAmount AS [MIP/PMIMonthlyPremiumAmt], -- Changed From IntS.NextPaymentEscrowMortgageInsurance
 L.Ltv AS LTV,
 AR.MaximumDeductibleHazardPercentage,
 AR.MaximumDeductibleHazardAmount,
 LPD.PrepaymentPenaltyIndicator AS [Prepymt-May/WillNotPenalty],
 Gfe.PrepaymentPenaltyPeriod,
---Loan Info Buydown,
---Loan Info Buydown,
+LoanInfoBuydown = Null,
+ULDDPoolBalloonIndicator = Null,
 Hmda.LoanAmount,
 --Amort Type ARM Descr,
 LE2.firstChangeFrequencyMonth,
@@ -221,81 +236,113 @@ LPD.RateAdjustmentDurationMonthsCount AS PaymentChangeFreq,
 LPD.RateAdjustmentSubsequentCapPercent AS SubsequentCapUp,
 LPD.RateAdjustmentSubsequentCapPercent AS SubsequentCapDown,
 LPD.RateAdjustmentPercent AS [1stCapDown],
---The minimum rate after the first rate change,
+LPD.IndexMarginPercent AS TheMinimumRateAfterTheFirstRateChange,
 Hmda.InterestRate AS TheMaximumRateAfterTheFirstRateChange,
 [HAZ TYPE 01] = 50,
-Fee.PaidToName AS HAZAGENT01,
-IntS.NextEscrowTotalHazardInsuranceDueDate AS HazDueDT01,
-CON2.InsuranceRenewalDate AS HazExpires01,
-IntS.NextEscrowTotalHazardInsurance AS HaxPremAmt01,
+CON1.ContactName AS HAZAGENT01,
+CON1.InsuranceRenewalDate AS HazDueDT1,
+CON1.InsuranceRenewalDate AS HazExpires1,
+CON1.InsurancePremium AS HaxPremAmt1,
 [HazardTerm01] = 12,
-CON2.InsuranceCoverageAmount AS HazCovAmt01,
-HazPayType01 = CASE WHEN RL.RequestImpoundType LIKE '%Insurance%' THEN 
+CON1.InsuranceCoverageAmount AS HazCovAmt1,
+HazPayType01 = CASE WHEN Gfe2010.HasEscrowHomeownerInsurancesIndicator = 1 THEN 
         'ESCROWED'
         ELSE 'NON-ESCROWED'
         END,
 [HazardCoverageCD01] = 'HazardInsurance',
-CON2.ReferenceNumber AS HazardPolicyNumber01,
-CON2.Address AS HazardInsCoAddr,
-CON2.Phone AS HazardInsCoRefNum,
-CON2.City AS HazardInsCoCity,
-CON2.State AS HazardInsCoState,
-CON2.PostalCode,
-HazType02 = CASE WHEN Fee5.Description LIKE '%Flood%' THEN 
-        51 
+CON1.ReferenceNumber AS HazardPolicyNumber1,
+CON1.Address AS HazardInsCoAddr1,
+CON1.Phone AS HazardInsCoRefNum1,
+CON1.City AS HazardInsCoCity1,
+CON1.State AS HazardInsCoState1,
+CON1.PostalCode AS PostalCode1,
+HazType02 = 51,
+CON2.ContactName AS HAZAGENT02,
+CON2.InsuranceRenewalDate AS HazDueDT2,
+CON2.InsuranceRenewalDate AS HazExpires2,
+CON2.InsurancePremium AS HaxPremAmt2,
+[HazardTerm02] = 12,
+CON2.InsuranceCoverageAmount AS HazCovAmt2,
+HazPayType02 = CASE WHEN Gfe2010.HasEscrowFloodInsurancesIndicator = 1 THEN 
+        'ESCROWED'
+        ELSE 'NON-ESCROWED'
         END,
-Fee1.PaidToName AS HazAgent02,
---HAZ DUE DT 02
-CON.ReferenceNumber AS HazExpires02,
---HAZ PREM AMT 02
---Hazard Term 02
-CON.InsuranceCoverageAmount AS HazCovAmt02,
---HAZ PAY TYPE 02
---HAZARD COVERAGE CD 02
-CON.ReferenceNumber AS HazardPolicyNumber02,
+[HazardCoverageCD2] = 'FloodInsurance',
+CON2.ReferenceNumber AS HazardPolicyNumber2,
+CON2.Address AS HazardInsCoAddr2,
+CON2.Phone AS HazardInsCoRefNum2,
+CON2.City AS HazardInsCoCity2,
+CON2.State AS HazardInsCoState2,
+CON2.PostalCode AS PostalCode2,
 HazType03 = CASE WHEN Fee5.Description LIKE '%Wind%' THEN 
-        53 
+                    53 
+                 WHEN Fee.Description LIKE '%Earthquake%' THEN
+                    54
+                 ELSE 50
+                 END,
+CON3.ContactName AS HAZAGENT3,
+CON3.NextDueDate AS HazDueDT3,
+CON3.RenewalDate AS HazExpires3,
+CON3.Premium AS HaxPremAmt03,
+[HazardTerm03] = 12,
+CON3.CoverageAmount AS HazCovAmt3,
+HazPayType03 = CASE WHEN Gfe2010.HasEscrowUserDefinedIndicator1 = 1 THEN 
+        'ESCROWED'
+        ELSE 'NON-ESCROWED'
         END,
-Hud1EsPayTo.Name AS HazAgent03,
---HAZ DUE DT 03
---HAZ EXPIRES 03
---HAZ PREM AMT 03
---Hazard Term 03
-Hud1EsPayTo.CoverageAmount AS HazCovAmt03,
---HAZ PAY TYPE 03
-Fee5.Description AS HazardCoverageCD03,
-Hud1EsPayTo.CoverageAmount AS HazardPolicyNumber03,
-HazType04 = CASE WHEN Fee6.Description LIKE '%Fire%' THEN 
-        54 
-        END,
-Hud1EsPayTo1.Address AS HazAgent04,
-Hud1EsPayTo2.RenewalDate AS HazExpires04,
-Hud1EsPayTo2.Premium AS HazPremAmt04,
+Fee5.Description AS HazardCoverageCD3,
+CON3.PolicyNumber AS HazardPolicyNumber3,
+CON3.Address AS HazardInsCoAddr3,
+CON3.Phone AS HazardInsCoRefNum3,
+CON3.City AS HazardInsCoCity3,
+CON3.State AS HazardInsCoState3,
+CON3.PostalCode AS PostalCode3,
+HazType04 = CASE WHEN Fee6.Description LIKE '%Wind%' THEN 
+                53 
+                 WHEN Fee6.Description LIKE '%Earthquake%' THEN
+                54
+                ELSE 50
+                END,
+CON4.Address AS HazAgent4,
+CON4.RenewalDate AS HazExpires4,
+CON4.Premium AS HazPremAmt4,
 HazardTerm04 = 12,
-Hud1EsPayTo2.CoverageAmount AS HazCovAmt04,
-Hud1EsPayTo2.FeeType AS HazPayType04,
---Hazard Coverage CD 04
---Hazard Policy Number 04
-HazType05 = CASE WHEN Fee5.Description LIKE '%Earthquake%' THEN 
-        54 
+CON4.CoverageAmount AS HazCovAmt4,
+HazPayType04 = CASE WHEN Gfe2010.HasEscrowUserDefinedIndicator2 = 1 THEN 
+        'ESCROWED'
+        ELSE 'NON-ESCROWED'
         END,
---HAZ AGENT 05
---HAZ DUE DT 05
---HAZ EXPIRES 05
---HAZ PREM AMT 05
---Hazard Term 05
---HAZ COV AMT 05
---HAZ PAY TYPE 05
---Hazard Coverage CD 05
---Hazard Policy Number 05
-
---Haz Ins Co Name 05
---Haz Ins Co Addr 05
---Haz Ins Co City 05
---Haz Ins Co State 05
---Haz Ins Co Zip 05
---Borr DOB
---Co-Borr DOB
+Fee6.Description AS HazardCoverageCD4, 
+CON4.PolicyNumber AS HazardPolicyNumber4,
+CON4.Address AS HazardInsCoAddr4,
+CON4.Phone AS HazardInsCoRefNum4,
+CON4.City AS HazardInsCoCity4,
+CON4.State AS HazardInsCoState4,
+CON4.PostalCode AS PostalCode4,
+HazType05 = CASE WHEN Fee7.Description LIKE '%Wind%' THEN 
+                53 
+                 WHEN Fee7.Description LIKE '%Earthquake%' THEN
+                54
+                ELSE 50
+                END,
+CON5.Address AS HazAgent5,
+CON5.RenewalDate AS HazExpires5,
+CON5.Premium AS HazPremAmt5,
+HazardTerm05 = 12,
+CON5.CoverageAmount AS HazCovAmt5,
+HazPayType05 = CASE WHEN Gfe2010.HasEscrowUserDefinedIndicator3 = 1 THEN 
+        'ESCROWED'
+        ELSE 'NON-ESCROWED'
+        END,
+Fee7.Description AS HazardCoverageCD5, 
+CON5.PolicyNumber AS HazardPolicyNumber5,
+CON5.Address AS HazardInsCoAddr5,
+CON5.Phone AS HazardInsCoRefNum5,
+CON5.City AS HazardInsCoCity5,
+CON5.State AS HazardInsCoState5,
+CON5.PostalCode AS PostalCode5,
+B1.Birthdate AS BorrDOB,
+B2.Birthdate AS CoBorrDOB,
 Fee3.BorPaidAmount AS InterestCollectingAtClosing, 
 RZ.InterestOnlyMonths,
 LPD.SubsequentRateAdjustmentMonthsCount AS LoanInfoARMFirstPeriodChange,
@@ -316,7 +363,7 @@ Fee4.PaidToName AS AddImpoundCo,
 --Add Impound Co Zip
 --Add Impound Co Phone#
 Hmda.UniversalLoanId,
---RON Y or N
+RON = 'No',
 --WI Escrow Election for Reporting
 Fee3.BorPaidAmount AS MortgageInterest,
 M.PointsPaid AS BorrInfoPointsPaid,
@@ -331,11 +378,14 @@ US.AppraisalCompletedDate AS OriginalAppraisalDate,
 CD.DisbursementDate AS PurchaseSettlementDate,
 --=right([NOTICES.X97],1)
 Hmda.CountyCode AS FIPSCountyCode,  
---Next Due  
+LPD.ScheduledFirstPaymentDate AS NextDue, 
 CF1.StringValue AS MailingAddress1, 
 CF2.StringValue AS MailingCity,
 CF3.StringValue AS MailingState,
 CF4.StringValue AS MailingZip,
+ITIN = CASE WHEN CF5.StringValue = 'X' then 1 
+        ELSE Null
+        END,
 L.LoanAmortizationType AS MortgageInst,
 FhaMipUpfrontFinanced = CASE WHEN L.MortgageType = 'FHA' THEN 
         L.MiAndFundingFeeFinancedAmount
@@ -409,18 +459,17 @@ LEFT JOIN [WIN-T0FCRL091AK].Encompass.elliedb.Property PR ON PR.ENCOMPASSID = CF
 LEFT JOIN [WIN-T0FCRL091AK].Encompass.elliedb.Hmda ON Hmda.ENCOMPASSID = PR.ENCOMPASSID 
 LEFT JOIN [WIN-T0FCRL091AK].Encompass.elliedb.FhaVaLoan ON FhaVaLoan.ENCOMPASSID = Hmda.ENCOMPASSID 
 LEFT JOIN [WIN-T0FCRL091AK].Encompass.elliedb.ATRQMCommon ATRQMC ON ATRQMC.ENCOMPASSID = FhaVaLoan.ENCOMPASSID
-LEFT JOIN [WIN-T0FCRL091AK].Encompass.elliedb.Contact CON ON CON.ENCOMPASSID = ATRQMC.ENCOMPASSID AND ContactType = 'FLOOD_INSURANCE'
-LEFT JOIN [WIN-T0FCRL091AK].Encompass.elliedb.DisclosureNotices DN ON DN.ENCOMPASSID = CON.ENCOMPASSID
+LEFT JOIN [WIN-T0FCRL091AK].Encompass.elliedb.Contact CON1 ON CON1.ENCOMPASSID = ATRQMC.ENCOMPASSID AND CON1.ContactType = 'HAZARD_INSURANCE'
+LEFT JOIN [WIN-T0FCRL091AK].Encompass.elliedb.DisclosureNotices DN ON DN.ENCOMPASSID = Hmda.ENCOMPASSID
 LEFT JOIN [WIN-T0FCRL091AK].Encompass.elliedb.RegulationZ RZ ON RZ.ENCOMPASSID = DN.ENCOMPASSID
 LEFT JOIN [WIN-T0FCRL091AK].Encompass.elliedb.AdditionalRequests AR ON AR.ENCOMPASSID = RZ.ENCOMPASSID
 LEFT JOIN [WIN-T0FCRL091AK].Encompass.elliedb.Gfe ON Gfe.ENCOMPASSID = AR.ENCOMPASSID
 LEFT JOIN [WIN-T0FCRL091AK].Encompass.elliedb.ClosingCost CC ON CC.ENCOMPASSID = Gfe.ENCOMPASSID
 LEFT JOIN [WIN-T0FCRL091AK].Encompass.elliedb.LoanEstimate2 LE2 ON LE2.ENCOMPASSID = CC.ENCOMPASSID
 LEFT JOIN [WIN-T0FCRL091AK].Encompass.elliedb.Fee ON Fee.ENCOMPASSID = LE2.ENCOMPASSID AND Fee.FeeType = 'HazardInsurancePremium' 
-LEFT JOIN [WIN-T0FCRL091AK].Encompass.elliedb.Contact CON2 ON CON2.ENCOMPASSID = LE2.ENCOMPASSID AND CON2.ContactType = 'HAZARD_INSURANCE'
+LEFT JOIN [WIN-T0FCRL091AK].Encompass.elliedb.Contact CON2 ON CON2.ENCOMPASSID = LE2.ENCOMPASSID AND CON2.ContactType = 'FLOOD_INSURANCE'
+LEFT JOIN [WIN-T0FCRL091AK].Encompass.elliedb.Hud1EsPayTo CON3 ON CON3.ENCOMPASSID = LE2.ENCOMPASSID AND CON3.Hud1EsPayToIndex = 1
 LEFT JOIN [WIN-T0FCRL091AK].Encompass.elliedb.RateLock RL ON RL.ENCOMPASSID = LE2.ENCOMPASSID
-LEFT JOIN [WIN-T0FCRL091AK].Encompass.elliedb.Fee Fee1 ON Fee1.ENCOMPASSID = RL.ENCOMPASSID AND Fee1.FeeType = 'FloodInsuranceReserv' 
-LEFT JOIN [WIN-T0FCRL091AK].Encompass.elliedb.Fee Fee2 ON Fee2.ENCOMPASSID = RL.ENCOMPASSID AND Fee2.FeeType = 'HazardInsurance'
 LEFT JOIN dbo.vwBorrowers B2 on B2.LoanNumber = L.LoanNumber AND B2.BorrowerNum = 2
 LEFT JOIN dbo.vwBorrowers B3 on B3.LoanNumber = L.LoanNumber AND B3.BorrowerNum = 3
 LEFT JOIN dbo.vwBorrowers B4 on B4.LoanNumber = L.LoanNumber AND B4.BorrowerNum = 4
@@ -435,16 +484,24 @@ LEFT JOIN [WIN-T0FCRL091AK].Encompass.elliedb.CustomField CF1 ON TQL.EncompassId
 LEFT JOIN [WIN-T0FCRL091AK].Encompass.elliedb.CustomField CF2 ON TQL.EncompassId = CF2.EncompassId and CF2.FieldName = 'CX.SERV.BORRMAILINGCITY'
 LEFT JOIN [WIN-T0FCRL091AK].Encompass.elliedb.CustomField CF3 ON TQL.EncompassId = CF3.EncompassId and CF3.FieldName = 'CX.SERV.BORRMAILINGSTATE'
 LEFT JOIN [WIN-T0FCRL091AK].Encompass.elliedb.CustomField CF4 ON TQL.EncompassId = CF4.EncompassId and CF4.FieldName = 'CX.SERV.BORRMAILINGZIP'
-LEFT JOIN [WIN-T0FCRL091AK].Encompass.elliedb.Fee Fee3 ON TQL.ENCOMPASSID = Fee3.ENCOMPASSID AND Fee3.FeeType = 'PrepaidInterest'
+LEFT JOIN [WIN-T0FCRL091AK].Encompass.elliedb.CustomField CF5 on TQL.EncompassId = CF5.EncompassId and CF5.FieldName = 'CX.LP.ITIN'
+LEFT JOIN [WIN-T0FCRL091AK].Encompass.elliedb.CustomField CF6 on TQL.EncompassId = CF6.EncompassId and CF6.FieldName = 'CX.A6TITLEREVIEW'
+LEFT JOIN [WIN-T0FCRL091AK].Encompass.elliedb.CustomField CF7 on TQL.EncompassId = CF7.EncompassId and CF7.FieldName = 'CX.BUSINESSPURPOSE'
 LEFT JOIN [WIN-T0FCRL091AK].Encompass.elliedb.Miscellaneous M ON TQL.ENCOMPASSID = M.ENCOMPASSID
+LEFT JOIN [WIN-T0FCRL091AK].Encompass.elliedb.Fee Fee1 ON Fee1.ENCOMPASSID = RL.ENCOMPASSID AND Fee1.FeeType = 'FloodInsuranceReserv' 
+LEFT JOIN [WIN-T0FCRL091AK].Encompass.elliedb.Fee Fee2 ON Fee2.ENCOMPASSID = RL.ENCOMPASSID AND Fee2.FeeType = 'HazardInsurance'
+LEFT JOIN [WIN-T0FCRL091AK].Encompass.elliedb.Fee Fee3 ON TQL.ENCOMPASSID = Fee3.ENCOMPASSID AND Fee3.FeeType = 'PrepaidInterest'
 LEFT JOIN [WIN-T0FCRL091AK].Encompass.elliedb.Fee Fee4 ON M.ENCOMPASSID = Fee4.ENCOMPASSID AND Fee4.FeeType = 'MortgageInsurancePremium'
 LEFT JOIN [WIN-T0FCRL091AK].Encompass.elliedb.Fee Fee5 ON M.ENCOMPASSID = Fee5.ENCOMPASSID AND Fee5.FeeType = 'UserDefined_1006'
-LEFT JOIN [WIN-T0FCRL091AK].Encompass.elliedb.Hud1Es ON M.ENCOMPASSID = Hud1Es.ENCOMPASSID 
-LEFT JOIN [WIN-T0FCRL091AK].Encompass.elliedb.Hud1EsPayTo ON M.ENCOMPASSID = Hud1EsPayTo.ENCOMPASSID AND Hud1EsPayTo.Hud1EsPayToIndex = 1
-LEFT JOIN [WIN-T0FCRL091AK].Encompass.elliedb.Hud1EsPayTo Hud1EsPayTo1 ON M.ENCOMPASSID = Hud1EsPayTo1.ENCOMPASSID AND Hud1EsPayTo1.Hud1EsPayToIndex = 3
-LEFT JOIN [WIN-T0FCRL091AK].Encompass.elliedb.Hud1EsPayTo Hud1EsPayTo2 ON M.ENCOMPASSID = Hud1EsPayTo2.ENCOMPASSID AND Hud1EsPayTo2.Hud1EsPayToIndex = 2
-LEFT JOIN [WIN-T0FCRL091AK].Encompass.elliedb.HudLoanData HLD ON HLD.ENCOMPASSID = US.ENCOMPASSID
 LEFT JOIN [WIN-T0FCRL091AK].Encompass.elliedb.Fee Fee6 ON M.ENCOMPASSID = Fee6.ENCOMPASSID AND Fee6.FeeType = 'UserDefined_1007'
+LEFT JOIN [WIN-T0FCRL091AK].Encompass.elliedb.Fee Fee7 ON M.ENCOMPASSID = Fee7.ENCOMPASSID AND Fee7.FeeType = 'UserDefined_1008'
+LEFT JOIN [WIN-T0FCRL091AK].Encompass.elliedb.Fee Fee8 ON M.ENCOMPASSID = Fee8.ENCOMPASSID AND Fee8.FeeType = 'UserDefined_1004'
+LEFT JOIN [WIN-T0FCRL091AK].Encompass.elliedb.Hud1Es ON M.ENCOMPASSID = Hud1Es.ENCOMPASSID 
+LEFT JOIN [WIN-T0FCRL091AK].Encompass.elliedb.Hud1EsPayTo CON5 ON M.ENCOMPASSID = CON5.ENCOMPASSID AND CON5.Hud1EsPayToIndex = 3
+LEFT JOIN [WIN-T0FCRL091AK].Encompass.elliedb.Hud1EsPayTo CON4 ON M.ENCOMPASSID = CON4.ENCOMPASSID AND CON4.Hud1EsPayToIndex = 2
+LEFT JOIN [WIN-T0FCRL091AK].Encompass.elliedb.HudLoanData HLD ON HLD.ENCOMPASSID = US.ENCOMPASSID
+LEFT JOIN [WIN-T0FCRL091AK].Encompass.elliedb.Gfe2010Page Gfe2010 ON Gfe2010.ENCOMPASSID = HLD.ENCOMPASSID 
+
 
 
 WHERE A.ApplicationIndex = 0
